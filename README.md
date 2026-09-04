@@ -22,8 +22,15 @@ Read this before reading anything else.
 | Layers, models, growing schedule | Done. 79 tests pass. |
 | Data pipeline | Done. 202,599 CelebA faces at 64x64, 20,000 held out for FID. |
 | Training loop | Done. All eight arms train, checkpoint and reload. |
-| FID | Done, and validated against closed-form cases. |
-| The ablation sweep | See [RESULTS.md](RESULTS.md). |
+| FID | Done, validated against closed-form cases, and calibrated (floor 2.29, ceiling 284.06, noise 1.9). |
+| The ablation sweep | **Done. 8 arms x 3 seeds x 12,000 steps.** See [RESULTS.md](RESULTS.md). |
+
+**The headline.** Of ProGAN's four contributions, only the equalised learning
+rate measurably beats a DCGAN baseline (31.51 -> 23.73 FID). Pixel norm and
+minibatch stddev change nothing detectable on their own. **Progressive growing
+makes things substantially worse at 64x64** -- 54.31 against 28.38 on the
+identical network, across three seeds. Full table, calibration and limits in
+[RESULTS.md](RESULTS.md).
 
 **This is a small-scale attribution study, not a reproduction.** ProGAN trains to
 1024x1024 over days on hardware that is not a laptop. Everything here is 64x64
