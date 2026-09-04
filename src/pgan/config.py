@@ -90,6 +90,20 @@ class Config:
 BASE_LR = 2e-4
 DCGAN_INIT_STD = 0.02
 EQUALIZED_LR = BASE_LR / DCGAN_INIT_STD   # 1e-2
+# The derived factor is a first-order prediction and it does not survive
+# contact with the ProGAN architecture. Selected on seed 0 at a fixed budget,
+# everything else held constant:
+#
+#   eqlr-matched (DCGAN body)   1e-3 -> FID 190.7   1e-2 -> FID  23.0
+#   progan-fixed (ProGAN body)  1e-3 -> FID  74.8   1e-2 -> FID 305.6
+#
+# The two equalised architectures want learning rates 10x apart. The difference
+# is the discriminator: the DCGAN body keeps batch norm, the ProGAN body has no
+# normalisation anywhere, and an unnormalised critic will not tolerate the
+# larger step. 1e-3 is also the value the ProGAN paper uses, which is some
+# comfort that this is the architecture's property and not an artefact of this
+# particular budget.
+PROGAN_LR = 1e-3
 
 
 # The eight arms. Read top to bottom this walks from DCGAN to ProGAN one change
@@ -107,9 +121,9 @@ ARMS = {
     "dcgan-all":     dict(arch="dcgan",  equalized_lr=True,  pixel_norm=True,  minibatch_std=True,
                           match_out_scale=True, lr_g=EQUALIZED_LR, lr_d=EQUALIZED_LR),
     "progan-fixed":  dict(arch="progan", equalized_lr=True,  pixel_norm=True,  minibatch_std=True,
-                          grow=False, lr_g=EQUALIZED_LR, lr_d=EQUALIZED_LR),
+                          grow=False, lr_g=PROGAN_LR, lr_d=PROGAN_LR),
     "progan-grow":   dict(arch="progan", equalized_lr=True,  pixel_norm=True,  minibatch_std=True,
-                          grow=True, lr_g=EQUALIZED_LR, lr_d=EQUALIZED_LR),
+                          grow=True, lr_g=PROGAN_LR, lr_d=PROGAN_LR),
 }
 
 

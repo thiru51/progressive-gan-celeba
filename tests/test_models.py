@@ -154,6 +154,11 @@ def test_equalised_arms_run_at_the_matched_effective_learning_rate():
     from pgan.config import BASE_LR, EQUALIZED_LR
     for arm in ("dcgan", "pixelnorm", "mbstd", "eqlr"):
         assert make(arm).lr_g == BASE_LR, arm
-    for arm in ("eqlr-matched", "dcgan-all", "progan-fixed", "progan-grow"):
+    for arm in ("eqlr-matched", "dcgan-all"):
         assert make(arm).lr_g == EQUALIZED_LR == make(arm).lr_d, arm
     assert EQUALIZED_LR / BASE_LR == pytest.approx(50.0)
+    # The ProGAN body has no normalisation in D and will not take the larger
+    # step; selected on seed 0 and, separately, the value the paper uses.
+    from pgan.config import PROGAN_LR
+    for arm in ("progan-fixed", "progan-grow"):
+        assert make(arm).lr_g == PROGAN_LR == make(arm).lr_d, arm
