@@ -65,15 +65,36 @@ def main():
             results[arm]["fid_raw"].append(fid_raw)
             results[arm]["seconds"].append(secs)
             print(f"[{arm} seed{seed}] FID ema {fid_ema:.2f}  raw {fid_raw:.2f}  "
-                  f"({secs:.0f}s train)\n")
+                  f"({secs:.0f}s train)\n", flush=True)
+            # Written after every run, not just at the end. A sweep is hours
+            # long; losing power at hour four should cost the run in flight,
+            # not the whole table. (It has already happened once.)
+            save(a, results, device, t_start, partial=True)
 
-    for arm, r in results.items():
+    save(a, results, device, t_start, partial=False)
+    print(f"\n{'arm':14s} {'FID (EMA)':>18s} {'FID (raw)':>18s}")
+    order = sorted([k for k in results if results[k]["fid_ema"]],
+                   key=lambda k: statistics.mean(results[k]["fid_ema"]))
+    for arm in order:
+        r = results[arm]
+        print(f"{arm:14s} {statistics.mean(r['fid_ema']):11.2f} "
+              f"+-{statistics.pstdev(r['fid_ema']) if len(r['fid_ema'])>1 else 0.0:5.2f} "
+              f"{statistics.mean(r['fid_raw']):11.2f} "
+              f"+-{statistics.pstdev(r['fid_raw']) if len(r['fid_raw'])>1 else 0.0:5.2f}")
+    print(f"\nwrote {a.out}")
+    return 0
+
+
+def save(a, results, device, t_start, partial):
+    out = {k: dict(v) for k, v in results.items()}
+    for arm, r in out.items():
         for key in ("fid_ema", "fid_raw"):
             vals = r[key]
             r[key + "_mean"] = statistics.mean(vals) if vals else None
             r[key + "_std"] = statistics.pstdev(vals) if len(vals) > 1 else 0.0
 
     doc = {
+        "complete": not partial,
         "device": describe(device),
         "steps": a.steps, "batch_size": a.batch_size, "seeds": a.seeds,
         "fid_samples": a.fid_n,
@@ -82,19 +103,14 @@ def main():
                      "repo only"),
         "reference": "held-out CelebA images, never seen in training",
         "wall_clock_seconds": round(time.time() - t_start, 1),
-        "arms": results,
+        "arms": out,
     }
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(a.out).write_text(json.dumps(doc, indent=2))
-
-    print(f"\n{'arm':14s} {'FID (EMA)':>18s} {'FID (raw)':>18s}")
-    order = sorted(results, key=lambda k: results[k]["fid_ema_mean"] or 1e9)
-    for arm in order:
-        r = results[arm]
-        print(f"{arm:14s} {r['fid_ema_mean']:11.2f} +-{r['fid_ema_std']:5.2f} "
-              f"{r['fid_raw_mean']:11.2f} +-{r['fid_raw_std']:5.2f}")
-    print(f"\nwrote {a.out}  ({doc['wall_clock_seconds']:.0f}s total)")
-    return 0
+    # Write to a temp file and rename: a crash mid-write would otherwise leave
+    # a truncated JSON that looks like a finished sweep.
+    tmp = Path(str(a.out) + ".tmp")
+    tmp.write_text(json.dumps(doc, indent=2))
+    tmp.replace(Path(a.out))
 
 
 if __name__ == "__main__":
