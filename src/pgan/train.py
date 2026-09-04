@@ -125,8 +125,12 @@ def train(cfg, device=None, log=print):
             # needs is numerically fragile in reduced precision.
             loss_d = loss_d + 10.0 * losses.gradient_penalty(
                 d, real.float(), fake.detach().float(), kw)
-        elif cfg.r1_gamma > 0:
-            loss_d = loss_d + 0.5 * cfg.r1_gamma * losses.r1_penalty(d, real.float(), kw)
+        elif cfg.r1_gamma > 0 and step % cfg.r1_every == 0:
+            # Lazy regularisation: applied every r1_every steps with gamma
+            # multiplied by the same factor, so the penalty's average
+            # contribution to the gradient is unchanged.
+            loss_d = loss_d + 0.5 * cfg.r1_gamma * cfg.r1_every * losses.r1_penalty(
+                d, real.float(), kw)
         opt_d.zero_grad(set_to_none=True)
         loss_d.backward()
         opt_d.step()
@@ -201,6 +205,8 @@ def main():
     p.add_argument("--lr-d", dest="lr_d", type=float)
     p.add_argument("--loss", choices=["ns", "wgan-gp"])
     p.add_argument("--r1-gamma", dest="r1_gamma", type=float)
+    p.add_argument("--beta1", type=float)
+    p.add_argument("--beta2", type=float)
     p.add_argument("--steps-per-stage", dest="steps_per_stage", type=int)
     p.add_argument("--num-workers", dest="num_workers", type=int)
     p.add_argument("--device", default=None)

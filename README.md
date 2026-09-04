@@ -21,7 +21,7 @@ Read this before reading anything else.
 |---|---|
 | Layers, models, growing schedule | Done. 79 tests pass. |
 | Data pipeline | Done. 202,599 CelebA faces at 64x64, 20,000 held out for FID. |
-| Training loop | Done. All seven arms train, checkpoint and reload. |
+| Training loop | Done. All eight arms train, checkpoint and reload. |
 | FID | Done, and validated against closed-form cases. |
 | The ablation sweep | See [RESULTS.md](RESULTS.md). |
 
@@ -230,7 +230,7 @@ time is what makes that claim testable.
 
 ```
 src/pgan/
-  config.py            The seven arms, defined once. Everything else reads them.
+  config.py            The eight arms, defined once. Everything else reads them.
   schedule.py          step -> (stage, alpha). The growing schedule lives here alone.
   device.py            Device, TF32, and the bf16-over-fp16 choice.
   losses.py            Non-saturating, WGAN-GP, R1.
@@ -252,7 +252,7 @@ scripts/
   check_gpu.py         What fits, and how fast, before committing to a sweep.
   run_ablation.py      The whole sweep -> artifacts/ablation.json.
   make_grid.py         One row of samples per arm, same latents.
-tests/                 74 tests. Layers, models, schedule, FID, data, training.
+tests/                 79 tests. Layers, models, schedule, FID, data, training.
 ```
 
 ---
@@ -277,7 +277,7 @@ pixi run check-gpu
 ```
 
 Prove the whole pipeline works before downloading anything — this trains all
-seven arms for a few steps on procedurally generated data:
+eight arms for a few steps on procedurally generated data:
 
 ```bash
 pixi run smoke

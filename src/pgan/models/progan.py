@@ -58,9 +58,14 @@ class Generator(nn.Module):
         self.norm = PixelNorm() if pixel_norm else nn.Identity()
         act = nn.LeakyReLU(0.2, inplace=True)
         w0 = WIDTHS[4]
+        # Pixel norm goes after *every* activation, not once at the end of the
+        # block. An earlier version normalised only the block output, which left
+        # the 3x3 convolution reading unnormalised activations -- a quiet
+        # deviation from the reference that is invisible in the output shapes.
         self.initial = nn.Sequential(
             EqualizedConvTranspose2d(z_dim, w0, 4, 1, 0),
             act,
+            PixelNorm() if pixel_norm else nn.Identity(),
             EqualizedConv2d(w0, w0, 3, padding=1),
             act,
         )

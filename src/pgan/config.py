@@ -30,10 +30,22 @@ class Config:
     steps: int = 12000
     lr_g: float = 2e-4
     lr_d: float = 2e-4
-    beta1: float = 0.5
-    beta2: float = 0.999
+    # (0, 0.99) rather than DCGAN's (0.5, 0.999). ProGAN's discriminator carries
+    # no normalisation, and with momentum on the first moment it runs away: the
+    # same run scores FID 148 at (0.5, 0.999) and 75 at (0, 0.99). Applied to
+    # every arm so it cannot be what separates them.
+    beta1: float = 0.0
+    beta2: float = 0.99
     loss: str = "ns"               # "ns" (non-saturating logistic) or "wgan-gp"
-    r1_gamma: float = 0.0          # R1 penalty on real samples; 0 disables it
+    # R1 gradient penalty on real samples. Needed because an unnormalised
+    # discriminator is otherwise unconstrained -- without it the ProGAN arms
+    # collapse (FID 181 -> 148 at gamma 10). Applied to every arm.
+    r1_gamma: float = 10.0
+    # Lazy regularisation (StyleGAN2 s.4): the penalty every r1_every steps with
+    # gamma scaled to match, rather than every step. R1 needs a double backward
+    # and costs ~45% of throughput when applied every step; every 16 recovers
+    # nearly all of it and the training dynamics are indistinguishable.
+    r1_every: int = 16
     seed: int = 0
 
     # --- growing schedule, ignored unless grow=True ---
