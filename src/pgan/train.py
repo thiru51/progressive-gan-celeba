@@ -196,6 +196,9 @@ def main():
     p.add_argument("--seed", type=int)
     p.add_argument("--data")
     p.add_argument("--out-dir", dest="out_dir")
+    p.add_argument("--lr", type=float, help="sets both --lr-g and --lr-d")
+    p.add_argument("--lr-g", dest="lr_g", type=float)
+    p.add_argument("--lr-d", dest="lr_d", type=float)
     p.add_argument("--loss", choices=["ns", "wgan-gp"])
     p.add_argument("--r1-gamma", dest="r1_gamma", type=float)
     p.add_argument("--steps-per-stage", dest="steps_per_stage", type=int)
@@ -205,6 +208,10 @@ def main():
     a = vars(p.parse_args())
     arm = a.pop("arm")
     device = a.pop("device")
+    lr = a.pop("lr")
+    if lr is not None:
+        a["lr_g"] = a["lr_g"] if a["lr_g"] is not None else lr
+        a["lr_d"] = a["lr_d"] if a["lr_d"] is not None else lr
     cfg = make(arm, **a)
     train(cfg, device)
     return 0

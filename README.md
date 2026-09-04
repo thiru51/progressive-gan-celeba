@@ -19,7 +19,7 @@ Read this before reading anything else.
 
 | Piece | State |
 |---|---|
-| Layers, models, growing schedule | Done. 74 tests pass. |
+| Layers, models, growing schedule | Done. 79 tests pass. |
 | Data pipeline | Done. 202,599 CelebA faces at 64x64, 20,000 held out for FID. |
 | Training loop | Done. All seven arms train, checkpoint and reload. |
 | FID | Done, and validated against closed-form cases. |
@@ -41,7 +41,8 @@ again in RESULTS.md, because it is the single easiest thing to misquote.
 ## Contents
 
 - [What the four contributions actually do](#what-the-four-contributions-actually-do)
-- [The seven arms](#the-seven-arms)
+- [The eight arms](#the-eight-arms)
+- [The learning rate is not a free variable](#the-learning-rate-is-not-a-free-variable)
 - [What is held fixed, and why it matters](#what-is-held-fixed-and-why-it-matters)
 - [File-by-file layout](#file-by-file-layout)
 - [Install](#install)
@@ -120,22 +121,27 @@ is the disagreement this repository is set up to settle.
 
 ---
 
-## The seven arms
+## The eight arms
 
 Read top to bottom, this walks from DCGAN to ProGAN one change at a time.
 
-| arm | architecture | eq. LR | pixel norm | minibatch std | growing |
-|---|---|---|---|---|---|
-| `dcgan` | DCGAN | | | | |
-| `eqlr` | DCGAN | yes | | | |
-| `pixelnorm` | DCGAN | | yes | | |
-| `mbstd` | DCGAN | | | yes | |
-| `dcgan-all` | DCGAN | yes | yes | yes | |
-| `progan-fixed` | ProGAN | yes | yes | yes | |
-| `progan-grow` | ProGAN | yes | yes | yes | yes |
+| arm | architecture | eq. LR | pixel norm | minibatch std | growing | lr |
+|---|---|---|---|---|---|---|
+| `dcgan` | DCGAN | | | | | 2e-4 |
+| `eqlr` | DCGAN | yes | | | | 2e-4 |
+| `eqlr-matched` | DCGAN | yes | | | | 1e-2 |
+| `pixelnorm` | DCGAN | | yes | | | 2e-4 |
+| `mbstd` | DCGAN | | | yes | | 2e-4 |
+| `dcgan-all` | DCGAN | yes | yes | yes | | 1e-2 |
+| `progan-fixed` | ProGAN | yes | yes | yes | | 1e-2 |
+| `progan-grow` | ProGAN | yes | yes | yes | yes | 1e-2 |
 
-Two comparisons carry the weight:
+Three comparisons carry the weight:
 
+- **`eqlr` vs `eqlr-matched`** is the equalised learning rate dropped in naively
+  against the same change made properly. See
+  [the learning rate is not a free variable](#the-learning-rate-is-not-a-free-variable)
+  below — this turned out to be the most interesting thing in the repository.
 - **`dcgan-all` vs `progan-fixed`** separates "the three tricks bolted onto a
   DCGAN" from "ProGAN's actual architecture", with growing switched off in both.
 - **`progan-fixed` vs `progan-grow`** is progressive growing on its own. The two
@@ -144,6 +150,47 @@ Two comparisons carry the weight:
   step budget is spent coarse-to-fine.
 
 ---
+
+## The learning rate is not a free variable
+
+This started as a bug hunt and ended up being the main finding, so it is worth
+stating before the rest.
+
+Under Adam the update magnitude is approximately the learning rate itself,
+because the optimiser divides out the gradient scale. What governs how fast a
+layer actually moves is therefore the **relative** step, `lr / |w|`.
+
+The two parameterisations here store weights at very different scales. DCGAN
+initialises at `N(0, 0.02)`. The equalised layers initialise at `N(0, 1)` and
+apply He's constant inside the forward pass. So at the same nominal learning rate
+the equalised network takes relative steps **50x smaller** — measured directly:
+after 20 Adam steps at `lr = 2e-4`, the median relative weight change is 0.098
+for the DCGAN parameterisation and 0.0018 for the equalised one.
+
+Two consequences, both measured:
+
+**It saturates the output head at initialisation.** He's gain on the final layer
+gives pre-tanh activations with std 1.46 against the baseline's 0.22. Eight per
+cent of every generated image is pinned at +-1 from step zero, and the gradient
+reaching the generator's first layer is 7x smaller. `match_out_scale` picks the
+gain that reproduces DCGAN's own initial weight scale instead, which brings
+pre-tanh std to 0.24 and saturation to zero. (ProGAN itself never hits this: its
+generator has no output nonlinearity at all.)
+
+**It needs the learning rate rescaled by the same 50x.** Sweeping `eqlr-matched`
+over four learning rates, seed 0, everything else identical:
+
+| lr | 2e-4 | 1e-3 | 3e-3 | 1e-2 |
+|---|---|---|---|---|
+| FID | 238.1 | 139.9 | 48.3 | **29.1** |
+
+`1e-2` is exactly `2e-4 / 0.02` — the predicted factor — and it recovers to
+roughly the `dcgan` baseline. The factor is derived, not tuned.
+
+So every equalised arm runs at `lr = 1e-2` and every non-equalised arm at
+`2e-4`, which holds the *effective* step size fixed rather than the nominal
+number. `eqlr` is kept at `2e-4` on purpose, as the naive drop-in control, and
+its failure is reported rather than hidden.
 
 ## What is held fixed, and why it matters
 

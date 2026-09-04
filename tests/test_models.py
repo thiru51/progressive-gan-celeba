@@ -79,6 +79,24 @@ def test_flags_actually_change_the_module_tree():
                for m in dcgan.Discriminator(equalized_lr=True).modules())
 
 
+def test_equalized_lr_changes_only_the_weight_scaling():
+    """The `eqlr` arm must differ from `dcgan` in one thing and one thing only.
+
+    An earlier version also dropped batch norm from the discriminator when this
+    flag was set, which quietly turned a single-component ablation into a
+    two-component one and produced a collapsed generator that looked like a
+    finding.
+    """
+    plain = dcgan.Discriminator(equalized_lr=False)
+    eq = dcgan.Discriminator(equalized_lr=True)
+    count = lambda m, t: sum(isinstance(x, t) for x in m.modules())
+    assert count(plain, torch.nn.BatchNorm2d) == count(eq, torch.nn.BatchNorm2d) > 0
+    assert count(plain, torch.nn.LeakyReLU) == count(eq, torch.nn.LeakyReLU)
+    # Same layer count, same shapes -- only the convolution class differs.
+    assert ([tuple(p.shape) for p in plain.parameters()]
+            == [tuple(p.shape) for p in eq.parameters()])
+
+
 def test_the_two_progan_arms_are_architecturally_identical():
     """progan-fixed and progan-grow must differ only in the schedule.
 
@@ -98,3 +116,44 @@ def test_unknown_arm_is_rejected():
 def test_grow_requires_the_progan_architecture():
     with pytest.raises(ValueError):
         make("dcgan", grow=True)
+
+
+def test_matched_output_scale_stops_the_tanh_saturating_at_init():
+    """The `eqlr` arm collapses because its output head starts saturated.
+
+    He's gain on the final layer gives pre-tanh activations ~6.6x larger than
+    the baseline's, so a chunk of every generated image is pinned at +-1 from
+    step 0 and the gradient through the tanh is throttled. `eqlr-matched`
+    reproduces DCGAN's own initial weight scale instead. This test pins the
+    mechanism, not just the flag.
+    """
+    torch.manual_seed(0)
+    z = torch.randn(256, 128)
+
+    def pre_tanh(**kw):
+        g = dcgan.Generator(**kw)
+        with torch.no_grad():
+            return g.to_rgb(g.blocks(z[:, :, None, None]))
+
+    base = pre_tanh()
+    naive = pre_tanh(equalized_lr=True)
+    matched = pre_tanh(equalized_lr=True, match_out_scale=True)
+
+    saturated = lambda p: (p.tanh().abs() > 0.99).float().mean().item()
+    assert saturated(base) < 0.005
+    assert saturated(naive) > 0.02, "the failure this arm exists to show is gone"
+    assert saturated(matched) < 0.005
+    # And the matched arm should start at roughly the baseline's scale.
+    assert 0.5 < (matched.std() / base.std()).item() < 2.0
+
+
+def test_equalised_arms_run_at_the_matched_effective_learning_rate():
+    """Adam's relative step is lr/|w|, and the two parameterisations store
+    weights 50x apart, so a shared nominal lr would compare two different
+    effective step sizes. `eqlr` is the one deliberate exception."""
+    from pgan.config import BASE_LR, EQUALIZED_LR
+    for arm in ("dcgan", "pixelnorm", "mbstd", "eqlr"):
+        assert make(arm).lr_g == BASE_LR, arm
+    for arm in ("eqlr-matched", "dcgan-all", "progan-fixed", "progan-grow"):
+        assert make(arm).lr_g == EQUALIZED_LR == make(arm).lr_d, arm
+    assert EQUALIZED_LR / BASE_LR == pytest.approx(50.0)

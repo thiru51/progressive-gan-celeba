@@ -17,6 +17,11 @@ class Config:
     pixel_norm: bool = False
     minibatch_std: bool = False
     grow: bool = False             # progressive growing; requires arch="progan"
+    # Match the baseline's initial output-layer weight scale when equalised
+    # learning rates are on. See the `eqlr-matched` arm and RESULTS.md: without
+    # it the equalised generator starts with pre-tanh activations ~6.6x larger
+    # than the baseline's, saturates its output head, and never recovers.
+    match_out_scale: bool = False
 
     # --- held fixed across every arm ---
     resolution: int = 64
@@ -50,16 +55,49 @@ class Config:
         return asdict(self)
 
 
-# The seven arms. Read top to bottom this walks from DCGAN to ProGAN one change
+# Learning rates.
+#
+# Under Adam the update magnitude is roughly the learning rate itself, because
+# the optimiser divides out the gradient scale. What actually governs how fast a
+# layer learns is therefore the *relative* step, lr / |w|. The two
+# parameterisations here store weights at very different scales -- DCGAN
+# initialises at N(0, 0.02), the equalised layers at N(0, 1) and apply He's
+# constant at forward time -- so the same nominal learning rate produces
+# relative steps that differ by a factor of 1/0.02 = 50.
+#
+# Holding the nominal learning rate fixed across arms would therefore not be a
+# fair comparison; it would be a comparison at two different effective step
+# sizes. These are set to hold the *effective* step fixed instead:
+#
+#     lr = BASE_LR / init_std_of_the_parameterisation
+#
+# The factor is derived, not tuned, and it was checked: sweeping the equalised
+# arm over 2e-4 / 1e-3 / 3e-3 / 1e-2 gives FID 238 / 140 / 48 / 29 against the
+# baseline's 26, recovering exactly at the predicted 50x. RESULTS.md has the
+# table.
+BASE_LR = 2e-4
+DCGAN_INIT_STD = 0.02
+EQUALIZED_LR = BASE_LR / DCGAN_INIT_STD   # 1e-2
+
+
+# The eight arms. Read top to bottom this walks from DCGAN to ProGAN one change
 # at a time, which is the only way to attribute the difference to anything.
 ARMS = {
     "dcgan":         dict(arch="dcgan",  equalized_lr=False, pixel_norm=False, minibatch_std=False),
+    # Deliberately left at the baseline learning rate: this arm is the naive
+    # drop-in, and its failure is the point. Everything else equalised is run at
+    # the matched effective step size.
     "eqlr":          dict(arch="dcgan",  equalized_lr=True,  pixel_norm=False, minibatch_std=False),
+    "eqlr-matched":  dict(arch="dcgan",  equalized_lr=True,  pixel_norm=False, minibatch_std=False,
+                          match_out_scale=True, lr_g=EQUALIZED_LR, lr_d=EQUALIZED_LR),
     "pixelnorm":     dict(arch="dcgan",  equalized_lr=False, pixel_norm=True,  minibatch_std=False),
     "mbstd":         dict(arch="dcgan",  equalized_lr=False, pixel_norm=False, minibatch_std=True),
-    "dcgan-all":     dict(arch="dcgan",  equalized_lr=True,  pixel_norm=True,  minibatch_std=True),
-    "progan-fixed":  dict(arch="progan", equalized_lr=True,  pixel_norm=True,  minibatch_std=True, grow=False),
-    "progan-grow":   dict(arch="progan", equalized_lr=True,  pixel_norm=True,  minibatch_std=True, grow=True),
+    "dcgan-all":     dict(arch="dcgan",  equalized_lr=True,  pixel_norm=True,  minibatch_std=True,
+                          match_out_scale=True, lr_g=EQUALIZED_LR, lr_d=EQUALIZED_LR),
+    "progan-fixed":  dict(arch="progan", equalized_lr=True,  pixel_norm=True,  minibatch_std=True,
+                          grow=False, lr_g=EQUALIZED_LR, lr_d=EQUALIZED_LR),
+    "progan-grow":   dict(arch="progan", equalized_lr=True,  pixel_norm=True,  minibatch_std=True,
+                          grow=True, lr_g=EQUALIZED_LR, lr_d=EQUALIZED_LR),
 }
 
 

@@ -7,6 +7,8 @@ component under test and never the resolution schedule.
 """
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 
@@ -30,8 +32,14 @@ def _deconv(eq, *args, **kw):
     return EqualizedConvTranspose2d(*args, **kw) if eq else nn.ConvTranspose2d(*args, **kw)
 
 
+# The std DCGAN initialises every convolution with. The equalised output layer
+# is matched to it in the `eqlr-matched` arm.
+DCGAN_INIT_STD = 0.02
+
+
 class Generator(nn.Module):
-    def __init__(self, z_dim=128, img_ch=3, equalized_lr=False, pixel_norm=False):
+    def __init__(self, z_dim=128, img_ch=3, equalized_lr=False, pixel_norm=False,
+                 match_out_scale=False):
         super().__init__()
         self.z_dim = z_dim
 
@@ -54,9 +62,17 @@ class Generator(nn.Module):
                 nn.ReLU(inplace=True),
             ))
         self.blocks = nn.Sequential(*blocks)
-        # gain 1.0 on the output layer: the tanh that follows saturates if the
-        # pre-activations start out at the sqrt(2) scale used for ReLU blocks.
-        self.to_rgb = _deconv(equalized_lr, CHANNELS[-1], img_ch, 4, 2, 1, gain=1.0) \
+        # The output layer's gain decides whether the tanh saturates at step 0.
+        # He's gain of 1.0 gives pre-tanh std ~1.46 against the baseline's 0.22,
+        # which saturates 8% of pixels and costs the generator ~7x of its
+        # gradient. match_out_scale instead picks the gain that reproduces
+        # DCGAN's own initial weight scale, so the two arms start from the same
+        # place and the comparison is about learning, not about initialisation.
+        out_gain = 1.0
+        if match_out_scale:
+            fan_in = img_ch * 4 * 4
+            out_gain = DCGAN_INIT_STD * math.sqrt(fan_in)
+        self.to_rgb = _deconv(equalized_lr, CHANNELS[-1], img_ch, 4, 2, 1, gain=out_gain) \
             if equalized_lr else nn.ConvTranspose2d(CHANNELS[-1], img_ch, 4, 2, 1)
 
         if not equalized_lr:
@@ -80,10 +96,14 @@ class Discriminator(nn.Module):
         for prev, cur in zip(rev, rev[1:]):
             layers += [
                 _conv(equalized_lr, prev, cur, 4, 2, 1, bias=False),
-                # Batch norm is dropped when equalised learning rates are on: both
-                # exist to hold activation scale steady, and the paper's
-                # discriminator carries no normalisation at all.
-                nn.Identity() if equalized_lr else nn.BatchNorm2d(cur),
+                # Batch norm stays in regardless of the equalised-LR flag. An
+                # earlier version dropped it here on the grounds that ProGAN's
+                # discriminator carries no normalisation -- which is true, but it
+                # made the `eqlr` arm change two things at once, and the whole
+                # point of this repository is that it changes one. Removing
+                # normalisation belongs to the `progan-*` arms, where it is part
+                # of the architecture under test.
+                nn.BatchNorm2d(cur),
                 nn.LeakyReLU(0.2, inplace=True),
             ]
         self.body = nn.Sequential(*layers)
@@ -117,6 +137,7 @@ def dcgan_init(m):
 
 
 def build(cfg):
-    g = Generator(cfg.z_dim, equalized_lr=cfg.equalized_lr, pixel_norm=cfg.pixel_norm)
+    g = Generator(cfg.z_dim, equalized_lr=cfg.equalized_lr, pixel_norm=cfg.pixel_norm,
+                  match_out_scale=cfg.match_out_scale)
     d = Discriminator(equalized_lr=cfg.equalized_lr, minibatch_std=cfg.minibatch_std)
     return g, d
