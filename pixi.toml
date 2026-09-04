@@ -1,0 +1,39 @@
+[workspace]
+name = "progressive-gan-celeba"
+version = "0.1.0"
+description = "Which of ProGAN's four contributions actually carries the improvement over DCGAN? An ablation on CelebA at 64x64."
+authors = ["Thiru <fearlesspirate007@gmail.com>"]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+pip = "*"
+
+[activation.env]
+PYTHONPATH = "src"
+# Figures are written to disk, never displayed.
+MPLBACKEND = "Agg"
+
+[pypi-dependencies]
+torch = { version = ">=2.5", index = "https://download.pytorch.org/whl/cu124" }
+torchvision = { version = ">=0.20", index = "https://download.pytorch.org/whl/cu124" }
+numpy = ">=1.26"
+pillow = ">=10.0"
+pyarrow = ">=15.0"
+scipy = ">=1.11"
+pyyaml = "*"
+tqdm = "*"
+matplotlib = "*"
+pytest = ">=8.0"
+
+[tasks]
+check-gpu = "python scripts/check_gpu.py"
+fetch = "python scripts/fetch_celeba.py"
+prepare = "python -m pgan.data.prepare"
+smoke = "python -m pgan.smoke"
+train = "python -m pgan.train"
+ablation = "python scripts/run_ablation.py"
+fid = "python -m pgan.metrics.fid"
+grid = "python scripts/make_grid.py"
+test = "pytest -q"

@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.ipynb_checkpoints/
+
+# Environments
+.pixi/
+.venv/
+venv/
+env/
+.env
+
+# Datasets. The leading slash is load-bearing: a bare "data/" also matches
+# src/pgan/data/, which silently drops the dataset code from the repo and leaves
+# a clean clone unable to import pgan at all.
+/data/
+*.parquet
+
+# Weights. G+D+EMA is ~110 MB per run and there are 21 runs; committing them
+# would make this repo unclonable. Everything else under checkpoints/ is small
+# and is the evidence for RESULTS.md: the config each run used, the per-interval
+# metrics, and the sample sheets.
+/checkpoints/**/*.pt
+/checkpoints/**/*.pth
+
+# Cached InceptionV3 activations for the FID reference set, ~160 MB and
+# regenerable from the holdout split in one command.
+/artifacts/real_features.npz
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
