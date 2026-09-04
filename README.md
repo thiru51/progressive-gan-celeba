@@ -133,8 +133,8 @@ Read top to bottom, this walks from DCGAN to ProGAN one change at a time.
 | `pixelnorm` | DCGAN | | yes | | | 2e-4 |
 | `mbstd` | DCGAN | | | yes | | 2e-4 |
 | `dcgan-all` | DCGAN | yes | yes | yes | | 1e-2 |
-| `progan-fixed` | ProGAN | yes | yes | yes | | 1e-2 |
-| `progan-grow` | ProGAN | yes | yes | yes | yes | 1e-2 |
+| `progan-fixed` | ProGAN | yes | yes | yes | | 1e-3 |
+| `progan-grow` | ProGAN | yes | yes | yes | yes | 1e-3 |
 
 Three comparisons carry the weight:
 
@@ -153,44 +153,87 @@ Three comparisons carry the weight:
 
 ## The learning rate is not a free variable
 
-This started as a bug hunt and ended up being the main finding, so it is worth
-stating before the rest.
+This started as a bug hunt and became the most interesting thing in the
+repository, so it comes before the rest.
+
+### Adam's step is relative, and the two parameterisations are 50x apart
 
 Under Adam the update magnitude is approximately the learning rate itself,
 because the optimiser divides out the gradient scale. What governs how fast a
 layer actually moves is therefore the **relative** step, `lr / |w|`.
 
-The two parameterisations here store weights at very different scales. DCGAN
-initialises at `N(0, 0.02)`. The equalised layers initialise at `N(0, 1)` and
-apply He's constant inside the forward pass. So at the same nominal learning rate
-the equalised network takes relative steps **50x smaller** — measured directly:
-after 20 Adam steps at `lr = 2e-4`, the median relative weight change is 0.098
-for the DCGAN parameterisation and 0.0018 for the equalised one.
+DCGAN initialises weights at `N(0, 0.02)`. The equalised layers initialise at
+`N(0, 1)` and apply He's constant inside the forward pass. So at the same
+nominal learning rate the equalised network takes relative steps **~50x
+smaller** — measured directly: after 20 Adam steps at `lr = 2e-4`, the median
+relative weight change is 0.098 for the DCGAN parameterisation against 0.0018
+for the equalised one.
 
-Two consequences, both measured:
-
-**It saturates the output head at initialisation.** He's gain on the final layer
-gives pre-tanh activations with std 1.46 against the baseline's 0.22. Eight per
-cent of every generated image is pinned at +-1 from step zero, and the gradient
+There is a second, separate effect at initialisation. He's gain on the output
+layer gives pre-tanh activations with std 1.46 against the baseline's 0.22, so
+8% of every generated image is pinned at +-1 from step zero and the gradient
 reaching the generator's first layer is 7x smaller. `match_out_scale` picks the
-gain that reproduces DCGAN's own initial weight scale instead, which brings
-pre-tanh std to 0.24 and saturation to zero. (ProGAN itself never hits this: its
-generator has no output nonlinearity at all.)
+gain that reproduces DCGAN's own initial weight scale instead, bringing pre-tanh
+std to 0.24 and saturation to zero. ProGAN never hits this, because its
+generator has no output nonlinearity at all.
 
-**It needs the learning rate rescaled by the same 50x.** Sweeping `eqlr-matched`
-over four learning rates, seed 0, everything else identical:
+Sweeping the corrected arm over four learning rates, seed 0, everything else
+identical, confirms the 50x prediction:
 
 | lr | 2e-4 | 1e-3 | 3e-3 | 1e-2 |
 |---|---|---|---|---|
 | FID | 238.1 | 139.9 | 48.3 | **29.1** |
 
-`1e-2` is exactly `2e-4 / 0.02` — the predicted factor — and it recovers to
-roughly the `dcgan` baseline. The factor is derived, not tuned.
+`1e-2` is exactly `2e-4 / 0.02`, the derived factor, and it recovers to roughly
+the baseline.
 
-So every equalised arm runs at `lr = 1e-2` and every non-equalised arm at
-`2e-4`, which holds the *effective* step size fixed rather than the nominal
-number. `eqlr` is kept at `2e-4` on purpose, as the naive drop-in control, and
-its failure is reported rather than hidden.
+### Where the derivation stops working
+
+The same reasoning predicts that **every** equalised network wants 1e-2. It does
+not. Selected on seed 0 under the final shared settings:
+
+| | lr 1e-3 | lr 1e-2 |
+|---|---|---|
+| `eqlr-matched` (DCGAN body) | 190.7 | **23.0** |
+| `progan-fixed` (ProGAN body) | **74.8** | 305.6 |
+
+Two architectures, both fully equalised, wanting learning rates 10x apart. The
+difference is the discriminator: the DCGAN body keeps batch norm, the ProGAN
+body has no normalisation anywhere, and an unnormalised critic will not tolerate
+the larger step. 1e-3 is also the value the ProGAN paper uses, which is some
+evidence this is a property of the architecture rather than of this budget.
+
+So the honest version of the finding is narrower than the derivation suggested:
+**the weight-scale argument predicts the right correction for a normalised
+discriminator and the wrong one for an unnormalised one.** The learning rate is
+set per architecture, chosen by the search above, and that search is part of the
+record rather than hidden in a config file.
+
+### ProGAN's architecture needs its regulariser
+
+The first version of this experiment used the non-saturating loss for every arm
+with no gradient penalty, on the grounds that changing the objective alongside
+the architecture makes the result unattributable. That reasoning is sound and
+the consequence was still fatal: ProGAN's discriminator has no normalisation,
+which is precisely why the paper pairs it with WGAN-GP, and removing the penalty
+left nothing constraining it at all. Every ProGAN run collapsed.
+
+Adding the paper's pieces back one at a time, `progan-fixed` at 4,000 steps:
+
+| | FID |
+|---|---|
+| lr 2e-4, betas (0.5, 0.999), no penalty | 364.0 |
+| lr 1e-3 | 180.8 |
+| + R1, gamma 10 | 147.6 |
+| + betas (0, 0.99) | **75.2** |
+
+R1 and `betas = (0, 0.99)` are therefore shared defaults for **every** arm, not
+ProGAN-only, so they cannot be what separates the arms. The check that this was
+safe: the DCGAN baseline is essentially unmoved by the switch, FID 25.6 -> 28.4.
+
+R1 is applied **lazily**, every 16 steps with gamma scaled by 16 to match
+(StyleGAN2 s.4). The penalty needs a double backward and costs 45% of throughput
+applied every step; at every 16 it costs 7%.
 
 ## What is held fixed, and why it matters
 
@@ -201,12 +244,24 @@ count, the latent noise used for scoring, and the held-out reference images.
 Three of those are worth spelling out because they are deviations from the
 papers, made deliberately:
 
-**The loss is the same everywhere.** DCGAN used the non-saturating logistic loss;
-ProGAN used WGAN-GP. Changing the objective at the same time as the architecture
-makes the comparison unreadable — you can no longer say whether growing helped or
-whether WGAN-GP did. Every arm here uses the non-saturating loss. WGAN-GP and R1
-are implemented in `src/pgan/losses.py` and reachable with `--loss wgan-gp` /
-`--r1-gamma`, so the choice can be checked rather than argued about.
+**The loss and the regularisation are the same everywhere.** DCGAN used the
+non-saturating logistic loss; ProGAN used WGAN-GP. Every arm here uses the
+non-saturating loss plus an R1 penalty (gamma 10, applied lazily every 16
+steps), and betas `(0, 0.99)`. Changing the objective alongside the architecture
+would make the comparison unreadable. The first version of this used no penalty
+at all, which is what the argument implies and which turned out to be fatal for
+the unnormalised ProGAN discriminator -- see
+[ProGAN's architecture needs its regulariser](#progans-architecture-needs-its-regulariser).
+WGAN-GP is implemented in `src/pgan/losses.py` and reachable with `--loss
+wgan-gp`, so the choice can be checked rather than argued about.
+
+**The learning rate is the one thing not held fixed, and that is deliberate.**
+It is set per architecture, chosen by the documented search above. Holding the
+nominal rate fixed across parameterisations that store weights 50x apart would
+not be a controlled comparison; it would be a comparison at two different
+effective step sizes, and two of the arms simply do not train there. This is the
+weakest point in the design and is called out again in
+[Honest limitations](#honest-limitations).
 
 **Every arm gets an EMA generator.** ProGAN evaluates a running average of G's
 weights; DCGAN does not. Giving it to only the ProGAN arms would hand them a free
@@ -404,9 +459,24 @@ biased by sample count, and can be gamed by matching low-order statistics withou
 producing good images. The sample sheet from `make_grid.py` is there so the
 numbers can be sanity-checked by eye.
 
-**No hyperparameter search.** Learning rate, betas and EMA decay are the standard
-values, held fixed. It is possible that an arm scoring badly here would do well
-under settings tuned for it, and that possibility is not excluded.
+**The optimiser settings were chosen with knowledge of the outcomes.** This is
+the real weakness. The shared configuration -- R1, betas `(0, 0.99)`, and a
+per-architecture learning rate -- was not fixed in advance; it was arrived at
+after the first two attempts produced collapsed arms, by diagnosing why and
+correcting it. Every change was then applied uniformly to all arms, and the
+learning-rate search is reported above rather than buried, but this is not a
+pre-registered experiment and should not be read as one.
+
+Concretely: seed 0 was used for every configuration decision, so its numbers are
+not independent of those decisions. Seeds 1 and 2 were run afterwards under
+settings already frozen, and the per-seed table in RESULTS.md is there so the
+difference can be inspected.
+
+**Learning rate is tuned per architecture, not per arm.** Within the DCGAN body
+the components are compared at a common rate, and within the ProGAN body
+likewise, but the two bodies use different rates. An arm scoring badly might do
+better under settings tuned for it specifically, and that possibility is not
+excluded.
 
 ---
 
