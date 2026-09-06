@@ -255,9 +255,12 @@ all components are compared at a common rate, and within the ProGAN body
 likewise, but the two bodies differ. An arm scoring badly might do better under
 settings tuned for it specifically.
 
-**64x64 is close to the smallest resolution at which growing could help.** The
-negative result is evidence about 64x64 and nothing larger. 128x128 fits in
-12 GB and is the run that would actually test the paper's claim.
+**64x64 is close to the smallest resolution at which growing could help.** That
+was the strongest objection to the growing result, and it has now been tested:
+see section 3b. At 128x128 the penalty widens in absolute terms rather than
+shrinking (+25.93 -> +30.39 FID), so one extra rung does not rescue growing.
+The claim is still bounded at 128x128, and extrapolating to the paper's
+1024x1024 would need three more doublings than were measured.
 
 **Fixed steps, not fixed compute.** Noted above for growing; it applies to
 `progan-fixed` vs `dcgan-all` too, in the opposite direction -- ProGAN is 13x
