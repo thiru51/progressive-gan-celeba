@@ -135,6 +135,44 @@ not a fixed *compute* budget -- the growing arm finished in 1,123 s against
 than equal steps it would get roughly twice the updates, and this comparison
 does not tell you where that lands.
 
+### 3b. Doubling the resolution does not rescue growing
+
+Section 3 closes with a caveat it can now test: *"it does not show growing is
+worthless -- the paper's regime is 1024x1024, where the ladder is twice as long."*
+If ladder length is what growing needs, then adding a rung should shrink the
+penalty. The sweep was repeated at **128x128** -- one more rung, 4 -> 128 --
+with the same 12,000-step budget and `steps_per_stage` raised 1,500 -> 1,800 so
+the extra stage is paid for rather than squeezed in. 3 seeds per arm, 4.6 h.
+
+| | 64x64 | 128x128 |
+|---|---|---|
+| `progan-fixed` | 28.38 +-0.82 | **45.89 +-1.70** |
+| `progan-grow` | 54.31 +-2.72 | **76.28 +-3.03** |
+| gap | +25.93 (1.91x) | **+30.39 (1.66x)** |
+
+**Growing still loses, and by a wider absolute margin.** The seed ranges do not
+overlap at either resolution: at 128 the worst `progan-fixed` seed (48.29) beats
+the best `progan-grow` seed (72.93) by 24.6 FID.
+
+The *ratio* does narrow, 1.91x to 1.66x, which is the direction the paper's
+argument predicts. But it narrows because both arms got worse -- a fixed
+12,000-step budget buys less at 128x128 than at 64x64, so `progan-fixed`
+degraded too (28.38 -> 45.89). The absolute penalty for growing grew. One extra
+rung is not enough, and extrapolating this trend to 1024x1024 would need three
+more doublings than were measured here.
+
+**The wall-clock caveat survives and gets stronger.** At 128 the growing arm ran
+in 1,636 s against 3,741 s -- **2.3x cheaper**, up from 1.9x at 64. So the fixed
+*step* budget is increasingly unfair to the fixed-resolution arm as resolution
+rises. Given equal wall clock the growing arm would get roughly 2.3x the
+updates, and this experiment still does not tell you where that lands. That is
+the honest boundary of the claim: **under a fixed step budget, at resolutions up
+to 128x128, progressive growing costs rather than saves.** An equal-compute
+comparison is the experiment that would settle it, and it has not been run.
+
+Numbers from `artifacts/ablation_128.json`, means over seeds [0, 1, 2],
+population standard deviation as elsewhere in this file.
+
 ### 4. ProGAN's architecture is not better than a DCGAN carrying the same three tricks
 
 `progan-fixed` (28.38) against `dcgan-all` (22.70): the purpose-built
@@ -273,7 +311,9 @@ detectable on their own. **Progressive growing makes results substantially
 worse** -- 54.31 against 28.38 on the identical network, consistent across three
 seeds and thirteen times the noise floor -- because at this resolution it spends
 most of the budget below full resolution and the coarse-to-fine ladder is too
-short to repay that.
+short to repay that. Repeating the comparison at **128x128** does not rescue it:
+76.28 against 45.89, an absolute penalty that grows rather than shrinks when the
+ladder gains a rung.
 
 The equalised learning rate is also the component most easily got wrong: dropped
 in naively it produces pure noise (FID 293), and making it work requires

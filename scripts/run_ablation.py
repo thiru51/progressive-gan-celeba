@@ -29,6 +29,11 @@ def main():
     p.add_argument("--batch-size", dest="batch_size", type=int, default=64)
     p.add_argument("--fid-n", dest="fid_n", type=int, default=10000)
     p.add_argument("--data", default="data/celeba64.npy")
+    p.add_argument("--resolution", type=int, default=64,
+                   help="64 or 128. Must match the prepared dataset.")
+    p.add_argument("--steps-per-stage", dest="steps_per_stage", type=int, default=2000,
+                   help="growing budget per stage. At 128 there are six stages, so this "
+                        "must be small enough that growing finishes inside --steps.")
     p.add_argument("--out-dir", dest="out_dir", default="checkpoints")
     p.add_argument("--out", default="artifacts/ablation.json")
     p.add_argument("--device", default=None)
@@ -47,7 +52,8 @@ def main():
     for seed in a.seeds:
         for arm in a.arms:
             cfg = make(arm, seed=seed, steps=a.steps, batch_size=a.batch_size,
-                       data=a.data, out_dir=a.out_dir)
+                       data=a.data, out_dir=a.out_dir, resolution=a.resolution,
+                       steps_per_stage=a.steps_per_stage)
             out = Path(a.out_dir) / f"{arm}_seed{seed}"
             ckpt = out / "final.pt"
             if a.skip_trained and ckpt.exists():
@@ -97,6 +103,7 @@ def save(a, results, device, t_start, partial):
         "complete": not partial,
         "device": describe(device),
         "steps": a.steps, "batch_size": a.batch_size, "seeds": a.seeds,
+        "resolution": a.resolution, "steps_per_stage": a.steps_per_stage,
         "fid_samples": a.fid_n,
         "fid_note": ("torchvision ImageNet InceptionV3 features, not the TF-Slim "
                      "graph used in published FID tables; comparable within this "

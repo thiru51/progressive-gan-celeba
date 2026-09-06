@@ -7,7 +7,8 @@ channel schedule and the same blocks can be trained either by fading in one
 resolution at a time or straight at the target resolution, and the two runs
 differ in nothing else.
 
-Resolution schedule for 64x64 is 4 -> 8 -> 16 -> 32 -> 64, five stages.
+Resolution schedule runs 4 -> 8 -> 16 -> 32 -> 64 -> 128; max_res selects how many
+    stages are actually built.
 """
 from __future__ import annotations
 
@@ -23,10 +24,12 @@ from pgan.models.layers import (
     PixelNorm,
 )
 
-RESOLUTIONS = [4, 8, 16, 32, 64]
+RESOLUTIONS = [4, 8, 16, 32, 64, 128]
 # Width per resolution. Capped at 512 at the low end because a 4x4 map with more
 # channels than that costs parameters without adding spatial detail.
-WIDTHS = {4: 512, 8: 512, 16: 256, 32: 128, 64: 64}
+# Width halves as the spatial size doubles, so the parameter count per block stays
+# roughly flat. 128 continues that schedule.
+WIDTHS = {4: 512, 8: 512, 16: 256, 32: 128, 64: 64, 128: 32}
 
 
 class _GBlock(nn.Module):

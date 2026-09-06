@@ -26,7 +26,8 @@ def test_generator_output_is_inside_tanh_range():
 
 @pytest.mark.parametrize("stage,res", list(enumerate(progan.RESOLUTIONS)))
 def test_progan_emits_every_resolution(stage, res):
-    g, d = progan.Generator(), progan.Discriminator()
+    # max_res must cover the stage under test; the default generator stops at 64.
+    g, d = progan.Generator(max_res=res), progan.Discriminator(max_res=res)
     x = g(torch.randn(2, 128), stage=stage, alpha=1.0)
     assert x.shape == (2, 3, res, res)
     assert d(x, stage=stage, alpha=1.0).shape == (2,)

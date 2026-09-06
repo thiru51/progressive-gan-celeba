@@ -24,13 +24,13 @@ env/
 # would make this repo unclonable. Everything else under checkpoints/ is small
 # and is the evidence for RESULTS.md: the config each run used, the per-interval
 # metrics, and the sample sheets.
-/checkpoints/**/*.pt
-/checkpoints/**/*.pth
+/checkpoints*/**/*.pt
+/checkpoints*/**/*.pth
 
 # Intermediate sample grids, one every 2,000 steps across 24 runs -- 80 MB of
 # them. The final grid per run is kept as the visual evidence for RESULTS.md,
 # along with results/samples_by_arm.png which puts every arm side by side.
-/checkpoints/**/samples_0*.png
+/checkpoints*/**/samples_0*.png
 
 # Cached InceptionV3 activations for the FID reference set, ~160 MB and
 # regenerable from the holdout split in one command.

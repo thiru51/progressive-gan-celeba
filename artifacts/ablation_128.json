@@ -1,0 +1,61 @@
+{
+  "complete": true,
+  "device": "NVIDIA GeForce RTX 4080 Laptop GPU, 11851 MiB, sm_89, torch 2.6.0+cu124",
+  "steps": 12000,
+  "batch_size": 64,
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "resolution": 128,
+  "steps_per_stage": 1800,
+  "fid_samples": 10000,
+  "fid_note": "torchvision ImageNet InceptionV3 features, not the TF-Slim graph used in published FID tables; comparable within this repo only",
+  "reference": "held-out CelebA images, never seen in training",
+  "wall_clock_seconds": 16486.5,
+  "arms": {
+    "progan-fixed": {
+      "fid_ema": [
+        44.70622803569958,
+        44.68064073475955,
+        48.29331572189645
+      ],
+      "fid_raw": [
+        59.86470767450359,
+        50.86393522414687,
+        56.229977048182974
+      ],
+      "seconds": [
+        3744.6469118595123,
+        3739.270943403244,
+        3740.3797764778137
+      ],
+      "fid_ema_mean": 45.89339483078519,
+      "fid_ema_std": 1.6970324864669954,
+      "fid_raw_mean": 55.652873315611146,
+      "fid_raw_std": 3.697139679480736
+    },
+    "progan-grow": {
+      "fid_ema": [
+        75.64572056585288,
+        80.26093903159676,
+        72.93025995796503
+      ],
+      "fid_raw": [
+        74.84851561076869,
+        85.92326744073554,
+        83.80721788337408
+      ],
+      "seconds": [
+        1639.2602381706238,
+        1630.2198662757874,
+        1639.1838908195496
+      ],
+      "fid_ema_mean": 76.27897318513823,
+      "fid_ema_std": 3.0260502948033703,
+      "fid_raw_mean": 81.52633364495944,
+      "fid_raw_std": 4.800302539467335
+    }
+  }
+}
