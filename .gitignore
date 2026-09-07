@@ -41,3 +41,11 @@ env/
 .vscode/
 .idea/
 *.swp
+
+# working notes and run outputs — local only
+HANDOFF.md
+PROGRESS.md
+END_GOAL.md
+checkpoints/
+checkpoints128/
+results/*.log
